@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CrowdSource Map Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; width: 100%; font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #222; }
+
+    body { overflow: hidden; background: linear-gradient(to bottom right, #fffbe6, #ffe6f3); }
+
+    .container { display: flex; height: 100vh; width: 100vw; }
+
+    #map { flex: 1; height: 100vh; width: 100%; }
+
+    .panel {
+      width: 360px;
+      background: #fff;
+      border-left: 1px solid #ddd;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
+      overflow-y: auto;
+      z-index: 1002;
+    }
+
+    .panel-header { margin-bottom: 20px; border-bottom: 1px solid #eaeaea; padding-bottom: 12px; }
+    .panel-header h1 { font-size: 1.4rem; font-weight: bold; color: #222; }
+
+    .panel-list { margin-top: 10px; }
+    .panel-item {
+      padding: 12px 10px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .panel-item:hover { background: #f0f8ff; }
+
+    .preview-card {
+      margin-top: 20px;
+      background: #f9fafa;
+      border-radius: 8px;
+      padding: 14px 12px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+      display: none;
+    }
+    .preview-card img, .preview-card video {
+      max-width: 100%;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .info-item { margin-bottom: 6px; font-size: 0.9rem; }
+    .info-label { font-weight: 600; color: #555; }
+
+    .loading {
+      position: fixed; top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(255, 255, 255, 0.8);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2em; z-index: 9999;
+    }
+
+    .navbar {
+      width: 100%; height: 70px;
+      position: fixed; top: 0; left: 0;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(15px) saturate(180%);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      z-index: 1000;
+    }
+    .navbar-brand { display: flex; align-items: center; }
+    .brand-text { font-size: 1.8rem; font-weight: 700; color: #ca41b8; text-shadow: 0 0 6px rgba(255, 215, 0, 0.7); }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <div class="navbar-brand">
+    <span class="brand-text">CrowdSource Map</span>
+  </div>
+</nav>
+
+<div class="container">
+  <div id="map"></div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h1>Reports</h1>
+      <p>Click a pin or list item to view details</p>
+    </div>
+        <div class="preview-card" id="preview-card">
+      <h2>Report Details</h2>
+      <img id="preview-image" src="" alt="Report Image">
+      <!-- <video id="preview-video" controls style="display:none;"></video> -->
+      <div class="info-item"><span class="info-label">Hazard:</span> <span id="preview-hazard"></span></div>
+      <div class="info-item"><span class="info-label">Severity:</span> <span id="preview-severity"></span></div>
+      <div class="info-item"><span class="info-label">Description:</span> <span id="preview-description"></span></div>
+      <div class="info-item"><span class="info-label">Tags:</span> <span id="preview-tags"></span></div>
+      <div class="info-item"><span class="info-label">Location:</span> <span id="preview-location"></span></div>
+      <div class="info-item"><span class="info-label">Uploaded:</span> <span id="preview-date"></span></div>
+    </div>
+    <div class="panel-list" id="panel-list"></div>
+
+    <div class="preview-card" id="preview-card">
+      <h2>Report Details</h2>
+      <img id="preview-image" src="" alt="Report Image">
+      <video id="preview-video" controls style="display:none;"></video>
+      <div class="info-item"><span class="info-label">Hazard:</span> <span id="preview-hazard"></span></div>
+      <div class="info-item"><span class="info-label">Severity:</span> <span id="preview-severity"></span></div>
+      <div class="info-item"><span class="info-label">Description:</span> <span id="preview-description"></span></div>
+      <div class="info-item"><span class="info-label">Tags:</span> <span id="preview-tags"></span></div>
+      <div class="info-item"><span class="info-label">Location:</span> <span id="preview-location"></span></div>
+      <div class="info-item"><span class="info-label">Uploaded:</span> <span id="preview-date"></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="loading" id="loading">Loading Map...</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  const map = L.map('map').setView([23.7749, 88.2357], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+
+  map.whenReady(() => document.getElementById('loading').style.display = 'none');
+
+  const panelList = document.getElementById('panel-list');
+  const previewCard = document.getElementById('preview-card');
+  const previewImage = document.getElementById('preview-image');
+  const previewVideo = document.getElementById('preview-video');
+  const previewHazard = document.getElementById('preview-hazard');
+  const previewSeverity = document.getElementById('preview-severity');
+  const previewDescription = document.getElementById('preview-description');
+  const previewTags = document.getElementById('preview-tags');
+  const previewLocation = document.getElementById('preview-location');
+  const previewDate = document.getElementById('preview-date');
+
+  let markers = [];
+
+  function showDetails(report) {
+    previewCard.style.display = "block";
+    previewImage.style.display = report.image_url ? "block" : "none";
+    previewVideo.style.display = report.video_url ? "block" : "none";
+
+    if (report.image_url) previewImage.src = report.image_url;
+    if (report.video_url) previewVideo.src = report.video_url;
+
+    previewHazard.textContent = report.hazard_type;
+    previewSeverity.textContent = report.severity_level;
+    previewDescription.textContent = report.description || "N/A";
+    previewTags.textContent = report.tags || "N/A";
+    previewLocation.textContent = `${report.latitude.toFixed(6)}, ${report.longitude.toFixed(6)}`;
+    previewDate.textContent = new Date(report.uploaded_at).toLocaleString();
+  }
+
+  function addMarker(report) {
+    const marker = L.marker([report.latitude, report.longitude]).addTo(map);
+    marker.on('click', () => showDetails(report));
+    markers.push(marker);
+
+    const item = document.createElement('div');
+    item.className = 'panel-item';
+    item.textContent = `${report.hazard_type} (${report.severity_level})`;
+    item.onclick = () => {
+      map.setView([report.latitude, report.longitude], 15);
+      showDetails(report);
+    };
+    panelList.appendChild(item);
+  }
+
+  // Load reports
+  fetch('/reports')
+    .then(res => res.json())
+    .then(reports => {
+      reports.forEach(r => addMarker(r));
+    })
+    .catch(err => console.error("Error loading reports:", err));
+
+  // --- Current Location Marker (Red Dot) ---
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+
+      // Red circle marker
+      L.circleMarker([lat, lon], {
+        radius: 8,
+        fillColor: "red",
+        color: "white",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9
+      }).addTo(map).bindPopup("You are here").openPopup();
+
+      map.setView([lat, lon], 12);
+    },
+    err => console.error("Geolocation error:", err)
+  );
+} else {
+  console.error("Geolocation not supported");
+}
+
+
+  
+
+
+
+</script>
+</body>
+</html>
